@@ -52,6 +52,8 @@ const Api = {
   },
   updateCase: (id, payload) => api(`/cases/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteCase: (id) => api(`/cases/${id}`, { method: "DELETE" }),
+  importAcceptedCases: (requirementId) =>
+    api("/knowledge/import-accepted-cases", { method: "POST", body: JSON.stringify({ requirement_id: requirementId }) }),
 };
 
 // ---------------- 工具函数 ----------------
@@ -441,6 +443,21 @@ async function exportCases(format) {
 
 document.getElementById("btn-export-xlsx").addEventListener("click", () => exportCases("xlsx"));
 document.getElementById("btn-export-csv").addEventListener("click", () => exportCases("csv"));
+
+document.getElementById("btn-import-knowledge").addEventListener("click", async (e) => {
+  const req = state.selectedRequirement;
+  e.target.disabled = true;
+  try {
+    const result = await Api.importAcceptedCases(req.id);
+    toast(
+      `已导入 ${result.imported} 条到知识库(已存在跳过 ${result.skipped_existing} 条,该需求共有 ${result.total_accepted} 条已采纳用例)`
+    );
+  } catch (err) {
+    toast(`导入失败: ${err.message}`, true);
+  } finally {
+    e.target.disabled = false;
+  }
+});
 
 // ---------------- 初始化 ----------------
 

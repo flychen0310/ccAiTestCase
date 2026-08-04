@@ -95,13 +95,17 @@ CREATE TABLE generation_batch (
 );
 
 -- 知识库文档(用于RAG检索的历史用例/规范)
+-- 实际落地时用的是 SQLite,没有 pgvector,embedding 是可空的 JSON 数组,
+-- 默认走 tfidf 检索(不需要预存向量,查询时即时计算),配置 OPENAI_API_KEY 后
+-- 才会用 openai embedding 并把向量写进这个字段。量大后再迁移到 pgvector/Milvus。
 CREATE TABLE knowledge_doc (
-  id          BIGSERIAL PRIMARY KEY,
-  doc_type    VARCHAR(32),  -- test_case_sample / test_spec / domain_glossary
-  content     TEXT,
-  embedding   VECTOR(1536), -- pgvector
-  metadata    JSONB,
-  created_at  TIMESTAMP DEFAULT now()
+  id              BIGSERIAL PRIMARY KEY,
+  doc_type        VARCHAR(32),  -- test_case_sample / test_spec / domain_glossary
+  content         TEXT,
+  embedding       JSONB,        -- 可空;openai 模式下才写入
+  embedding_model VARCHAR(64),
+  metadata        JSONB,
+  created_at      TIMESTAMP DEFAULT now()
 );
 ```
 
@@ -126,11 +130,15 @@ Prompt 设计要点:
 }
 ```
 
-### 4.2 RAG 检索模块
+### 4.2 RAG 检索模块(已实现,见 `app/llm/retrieval.py` + `app/services/knowledge_service.py`)
 
-- 检索对象:历史高质量用例样本、公司测试规范文档、领域术语表
-- 检索时机:生成用例前,基于需求关键词/功能点做相似度检索,取 top-k 作为 few-shot 示例
-- 一期可先用简单的关键词+embedding 混合检索,不需要复杂的重排序
+- 检索对象:历史高质量用例样本(`test_case_sample`,来自已审核通过的用例)、测试规范文档(`test_spec`)、领域术语表(`domain_glossary`)
+- 数据来源:一期最实用的方式是"从已采纳用例批量导入"(`POST /api/knowledge/import-accepted-cases`),前端有对应按钮;也支持手动录入规范/术语类文档(`POST /api/knowledge/documents`)
+- 检索时机:每次调用分类型用例生成前,用需求标题 + 该类型对应的分析结果(功能点/业务规则/边界场景)拼接成 query,检索 top-3 相关文档,作为额外的 few-shot 示例注入 prompt
+- 检索算法:默认 TF-IDF(字符 2~3-gram)+ 余弦相似度,不需要任何 API key,纯本地计算;配置 `RAG_EMBEDDING_PROVIDER=openai` 后切换成语义 embedding 检索,效果更好但需要调用 OpenAI 接口
+- 相关性过滤:低于阈值(0.05)的检索结果会被丢弃,避免"矮子里拔将军"硬凑参考污染生成质量
+- **重要边界**:检索时会排除"来自当前需求自己"的样例。原因是同一个需求反复生成→采纳→导入知识库,如果不排除会导致下一次生成检索到自己刚产出的内容,变成自我复读而不是真正参考其他需求积累的经验。RAG 的价值主要体现在跨需求场景。
+- 每次生成的 `generation_batch` 记录里存了 `retrieved_doc_ids`,方便追溯这次生成到底参考了哪些历史用例
 
 ### 4.3 用例生成引擎
 
@@ -181,7 +189,7 @@ POST /api/cases/export                 批量导出
 | 阶段 | 内容 | 产出 |
 |---|---|---|
 | M1(MVP) | 需求录入→AI理解→AI生成→人工编辑→导出 | 可用的单机版工具,验证生成质量 |
-| M2 | 引入 RAG 知识库、覆盖率校验、审核工作流 | 生成质量和可用性提升 |
+| M2(已完成 RAG 部分) | 引入 RAG 知识库(已实现)、覆盖率校验、审核工作流 | 生成质量和可用性提升 |
 | M3 | 对接外部需求源(如 TAPD)与用例执行平台 | 打通端到端链路,减少人工搬运 |
 | M4 | 执行结果反馈闭环、生成效果度量看板 | 持续优化生成效果 |
 

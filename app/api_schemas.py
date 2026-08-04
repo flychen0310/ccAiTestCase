@@ -107,3 +107,32 @@ class ExportRequest(BaseModel):
     requirement_id: Optional[int] = None
     case_ids: Optional[List[int]] = None
     format: str = "xlsx"
+
+
+# ---------- RAG 知识库 ----------
+
+
+class KnowledgeDocCreate(BaseModel):
+    doc_type: str = "test_spec"
+    content: str
+    metadata: dict = Field(default_factory=dict)
+
+
+class KnowledgeDocOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    doc_type: str
+    content: str
+    metadata: dict = Field(validation_alias="metadata_")
+    created_at: datetime
+
+
+class ImportAcceptedCasesRequest(BaseModel):
+    requirement_id: Optional[int] = None
+
+
+class ImportAcceptedCasesResponse(BaseModel):
+    imported: int
+    skipped_existing: int
+    total_accepted: int

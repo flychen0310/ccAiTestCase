@@ -7,6 +7,9 @@ from app import models
 from app.llm.client import LLMClient, extract_json
 from app.llm.output_schemas import GeneratedTestCase, RequirementAnalysis
 from app.llm.prompt_loader import load_prompt
+from app.services import knowledge_service
+
+RAG_TOP_K = 3
 
 GENERATION_STAGES = [
     {"case_type": "functional", "template": "case_gen_functional.jinja2", "source_field": "feature_points"},
@@ -61,6 +64,15 @@ def _generate_one_stage(
 ) -> Dict:
     client = LLMClient()
     case_type = stage_cfg["case_type"]
+    source_items = getattr(analysis, stage_cfg["source_field"])
+
+    retrieved_docs = knowledge_service.retrieve(
+        db,
+        query=f"{requirement.title} {' '.join(source_items)}",
+        doc_type="test_case_sample",
+        top_k=RAG_TOP_K,
+        exclude_requirement_id=requirement.id,
+    )
 
     system, user = load_prompt(
         stage_cfg["template"],
@@ -70,6 +82,7 @@ def _generate_one_stage(
             "feature_points": analysis.feature_points,
             "business_rules": analysis.business_rules,
             "edge_cases": analysis.edge_cases,
+            "retrieved_examples": [d.content for d in retrieved_docs],
         },
     )
 
@@ -79,6 +92,7 @@ def _generate_one_stage(
         model_name=client.model,
         prompt_version=PROMPT_VERSION,
         status="running",
+        retrieved_doc_ids=[d.id for d in retrieved_docs],
     )
     db.add(batch)
     db.flush()

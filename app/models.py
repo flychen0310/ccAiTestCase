@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM 模型,对应 docs/DESIGN.md 的数据模型设计(MVP 阶段暂不包含 knowledge_doc)。"""
+"""SQLAlchemy ORM 模型,对应 docs/DESIGN.md 的数据模型设计。"""
 import enum
 from datetime import datetime
 from typing import List, Optional
@@ -83,6 +83,7 @@ class GenerationBatch(Base):
     cost_estimate: Mapped[Optional[float]] = mapped_column(Numeric(10, 4), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="success")
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    retrieved_doc_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # 本次 RAG 检索命中的知识库文档 id
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     requirement: Mapped["Requirement"] = relationship(back_populates="batches")
@@ -108,3 +109,22 @@ class TestCase(Base):
 
     requirement: Mapped["Requirement"] = relationship(back_populates="cases")
     batch: Mapped[Optional["GenerationBatch"]] = relationship(back_populates="cases")
+
+
+class KnowledgeDoc(Base):
+    """RAG 知识库文档。
+
+    embedding 用 openai 提供商时才会写入(JSON 数组形式存向量,检索时在应用层算余弦相似度,
+    适合中小规模语料;量大后应迁移到 pgvector/Milvus 等专用向量库)。
+    tfidf 提供商不需要预存向量,检索时即时计算,所以 embedding 字段可能为空。
+    """
+
+    __tablename__ = "knowledge_doc"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    doc_type: Mapped[str] = mapped_column(String(32))  # test_case_sample / test_spec / domain_glossary
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    embedding_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

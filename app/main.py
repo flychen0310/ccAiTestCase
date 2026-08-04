@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import CORS_ORIGINS
 from app.database import init_db
-from app.routers import cases, requirements
+from app.routers import cases, knowledge, requirements
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -36,6 +36,7 @@ app.add_middleware(
 
 app.include_router(requirements.router)
 app.include_router(cases.router)
+app.include_router(knowledge.router)
 
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 

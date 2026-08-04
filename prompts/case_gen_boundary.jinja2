@@ -92,6 +92,14 @@
 {% for rule in business_rules %}
 - {{ rule }}
 {% endfor %}
+{% if retrieved_examples %}
+
+### 历史相似用例参考(仅供参考写作风格和粒度,不要照抄内容,需求不同不能直接套用)
+{% for example in retrieved_examples %}
+---
+{{ example }}
+{% endfor %}
+{% endif %}
 
 请基于以上业务规则生成边界值/等价类测试用例,按照 JSON Schema 输出。
 {% endblock %}
