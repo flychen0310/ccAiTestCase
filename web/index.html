@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 辅助测试用例生成平台</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="topbar-title">AI 辅助测试用例生成平台</div>
+      <div class="topbar-sub">需求录入 → AI 理解 → AI 生成用例 → 人工审核 → 导出</div>
+    </header>
+
+    <div class="layout">
+      <!-- 左侧:需求列表 -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <span>需求列表</span>
+          <button id="btn-new-requirement" class="btn btn-primary btn-sm">+ 新建需求</button>
+        </div>
+        <div id="requirement-list" class="requirement-list"></div>
+      </aside>
+
+      <!-- 右侧:主区域 -->
+      <main class="main">
+        <div id="empty-state" class="empty-state">
+          <p>从左侧选择一个需求,或新建一个需求开始。</p>
+        </div>
+
+        <div id="requirement-detail" class="requirement-detail hidden">
+          <section class="card">
+            <div class="card-header">
+              <h2 id="req-title"></h2>
+              <span id="req-status" class="badge"></span>
+            </div>
+            <p id="req-content" class="req-content"></p>
+            <div class="card-actions">
+              <button id="btn-analyze" class="btn btn-primary">AI 需求理解</button>
+              <span id="analyze-status" class="hint"></span>
+            </div>
+          </section>
+
+          <section id="analysis-section" class="card hidden">
+            <div class="card-header"><h3>需求理解结果</h3></div>
+            <div class="analysis-grid">
+              <div class="analysis-col">
+                <h4>功能点</h4>
+                <ul id="list-feature-points" class="tag-list"></ul>
+              </div>
+              <div class="analysis-col">
+                <h4>业务规则</h4>
+                <ul id="list-business-rules" class="tag-list"></ul>
+              </div>
+              <div class="analysis-col">
+                <h4>边界/异常场景</h4>
+                <ul id="list-edge-cases" class="tag-list"></ul>
+              </div>
+              <div class="analysis-col">
+                <h4>待澄清问题</h4>
+                <ul id="list-open-questions" class="tag-list muted"></ul>
+              </div>
+            </div>
+
+            <div class="card-actions generate-actions">
+              <label class="checkbox"><input type="checkbox" value="functional" checked /> 正向功能</label>
+              <label class="checkbox"><input type="checkbox" value="boundary" checked /> 边界值/等价类</label>
+              <label class="checkbox"><input type="checkbox" value="exception" checked /> 异常/容错</label>
+              <button id="btn-generate" class="btn btn-primary">生成用例</button>
+              <span id="generate-status" class="hint"></span>
+            </div>
+            <div id="generate-summary" class="generate-summary"></div>
+          </section>
+
+          <section id="cases-section" class="card hidden">
+            <div class="card-header">
+              <h3>测试用例(<span id="case-count">0</span>)</h3>
+              <div class="cases-toolbar">
+                <select id="filter-case-type" class="select">
+                  <option value="">全部类型</option>
+                  <option value="functional">正向功能</option>
+                  <option value="boundary">边界值/等价类</option>
+                  <option value="exception">异常/容错</option>
+                </select>
+                <select id="filter-review-status" class="select">
+                  <option value="">全部状态</option>
+                  <option value="pending">待审核</option>
+                  <option value="accepted">已采纳</option>
+                  <option value="rejected">已驳回</option>
+                  <option value="edited">已编辑</option>
+                </select>
+                <button id="btn-export-xlsx" class="btn btn-outline btn-sm">导出 Excel</button>
+                <button id="btn-export-csv" class="btn btn-outline btn-sm">导出 CSV</button>
+              </div>
+            </div>
+            <table class="case-table">
+              <thead>
+                <tr>
+                  <th class="col-id">ID</th>
+                  <th>标题</th>
+                  <th class="col-type">类型</th>
+                  <th class="col-priority">优先级</th>
+                  <th class="col-status">审核状态</th>
+                  <th class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody id="case-table-body"></tbody>
+            </table>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- 新建需求弹窗 -->
+  <div id="modal-new-requirement" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>新建需求</h3>
+        <button class="modal-close" data-close-modal="modal-new-requirement">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label class="field-label">需求标题</label>
+        <input id="input-req-title" class="input" type="text" placeholder="例如:购物车优惠券使用规则" />
+        <label class="field-label">需求描述</label>
+        <textarea id="input-req-content" class="textarea" rows="8" placeholder="粘贴需求原文..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" data-close-modal="modal-new-requirement">取消</button>
+        <button id="btn-submit-requirement" class="btn btn-primary">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 用例编辑弹窗 -->
+  <div id="modal-edit-case" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3>编辑用例</h3>
+        <button class="modal-close" data-close-modal="modal-edit-case">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label class="field-label">标题</label>
+        <input id="edit-case-title" class="input" type="text" />
+
+        <label class="field-label">前置条件</label>
+        <textarea id="edit-case-precondition" class="textarea" rows="2"></textarea>
+
+        <label class="field-label">步骤 / 预期结果</label>
+        <div id="edit-case-steps" class="steps-editor"></div>
+        <button id="btn-add-step" class="btn btn-outline btn-sm">+ 添加步骤</button>
+
+        <div class="field-row">
+          <div class="field-col">
+            <label class="field-label">优先级</label>
+            <select id="edit-case-priority" class="select select-full">
+              <option value="P0">P0</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+            </select>
+          </div>
+          <div class="field-col">
+            <label class="field-label">审核状态</label>
+            <select id="edit-case-review-status" class="select select-full">
+              <option value="pending">待审核</option>
+              <option value="accepted">已采纳</option>
+              <option value="rejected">已驳回</option>
+              <option value="edited">已编辑</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="field-label">审核备注</label>
+        <textarea id="edit-case-comment" class="textarea" rows="2"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-delete-case" class="btn btn-danger-outline">删除用例</button>
+        <div class="modal-footer-right">
+          <button class="btn btn-outline" data-close-modal="modal-edit-case">取消</button>
+          <button id="btn-save-case" class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

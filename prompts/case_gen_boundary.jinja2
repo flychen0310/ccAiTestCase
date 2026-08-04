@@ -1,0 +1,97 @@
+{#
+  阶段:用例生成 - 边界值/等价类用例
+  变量:
+    - requirement_title, requirement_content
+    - business_rules: 业务规则列表(list[str]),边界值主要从这里的数值型规则提取
+    - feature_points: 功能点列表(list[str]),用于理解上下文
+#}
+
+{% block system %}
+你是一名资深测试工程师,精通边界值分析和等价类划分方法,负责为给定需求编写"边界值/等价类测试用例"。
+
+编写要求:
+1. 重点扫描 business_rules 中出现的数值型限制(如长度、次数、时长、金额、数量),对每个数值型限制,按边界值分析法生成用例:最小值、最小值-1(非法)、最小值+1、最大值、最大值+1(非法)、典型中间值(可选,若非核心可省略)。
+2. 对没有明确数值但存在分类的规则(如状态枚举、角色权限),使用等价类划分:每个等价类至少1条用例。
+3. 每条用例必须包含:标题(title)、前置条件(precondition)、步骤(steps,每步包含操作 step 和预期结果 expected)、优先级(priority)、覆盖的规则原文(covers)。
+4. 预期结果要写明具体的系统行为,例如"提示'验证码错误,已输错3次,超过5次将锁定账号'",不合法输入的预期结果必须是明确的拒绝/报错行为,不能写"系统正常处理"这种模糊表述。
+5. 边界值相关用例优先级通常为 P1,明显影响主流程可用性的合法边界(如最大值恰好可用)可定为 P0。
+6. 只输出合法 JSON 数组,不要有多余解释文字,不要使用 markdown 代码块包裹。
+{% endblock %}
+
+{% block schema %}
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["title", "precondition", "steps", "case_type", "priority", "covers"],
+    "properties": {
+      "title": {"type": "string"},
+      "precondition": {"type": "string"},
+      "steps": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["step", "expected"],
+          "properties": {
+            "step": {"type": "string"},
+            "expected": {"type": "string"}
+          }
+        }
+      },
+      "case_type": {"type": "string", "enum": ["boundary"]},
+      "priority": {"type": "string", "enum": ["P0", "P1", "P2"]},
+      "covers": {"type": "array", "items": {"type": "string"}}
+    }
+  }
+}
+{% endblock %}
+
+{% block few_shot %}
+### 示例输入
+业务规则:
+- 验证码连续输错5次后账号锁定10分钟
+
+### 示例输出
+[
+  {
+    "title": "验证码连续输错4次后第5次输错-账号被锁定",
+    "precondition": "用户已获取有效验证码,已连续输错4次",
+    "steps": [
+      {"step": "第5次输入错误验证码,点击登录", "expected": "登录失败,提示账号已被锁定,10分钟内无法登录"}
+    ],
+    "case_type": "boundary",
+    "priority": "P0",
+    "covers": ["验证码连续输错5次后账号锁定10分钟"]
+  },
+  {
+    "title": "验证码连续输错4次后第4次仍输错-账号未锁定仍可重试",
+    "precondition": "用户已获取有效验证码,已连续输错3次",
+    "steps": [
+      {"step": "第4次输入错误验证码,点击登录", "expected": "登录失败,提示验证码错误,账号未被锁定,可继续尝试"}
+    ],
+    "case_type": "boundary",
+    "priority": "P1",
+    "covers": ["验证码连续输错5次后账号锁定10分钟"]
+  }
+]
+{% endblock %}
+
+{% block user %}
+### 需求标题
+{{ requirement_title }}
+
+### 需求描述
+{{ requirement_content }}
+
+### 功能点列表(上下文参考)
+{% for fp in feature_points %}
+- {{ fp }}
+{% endfor %}
+
+### 业务规则(重点分析对象)
+{% for rule in business_rules %}
+- {{ rule }}
+{% endfor %}
+
+请基于以上业务规则生成边界值/等价类测试用例,按照 JSON Schema 输出。
+{% endblock %}

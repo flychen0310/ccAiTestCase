@@ -1,0 +1,97 @@
+{#
+  阶段:用例生成 - 异常/容错用例
+  变量:
+    - requirement_title, requirement_content
+    - edge_cases: 需求理解阶段输出的边界/异常场景列表(list[str])
+    - business_rules: 业务规则列表(list[str]),用于理解上下文
+#}
+
+{% block system %}
+你是一名资深测试工程师,擅长挖掘系统的异常处理和容错能力,负责为给定需求编写"异常/容错测试用例"。
+
+编写要求:
+1. 逐条覆盖 edge_cases 列表中的每个场景,每个场景至少生成1条用例。
+2. 除 edge_cases 已列出的场景外,如果你从需求描述中发现明显遗漏的异常场景(例如网络超时、重复提交、并发冲突、权限校验),可以补充生成,但需要在 covers 字段中如实标注为"补充场景:xxx",不要冒充是 edge_cases 里已有的内容。
+3. 每条用例必须包含:标题(title)、前置条件(precondition)、步骤(steps)、优先级(priority)、覆盖场景(covers)。
+4. 预期结果必须描述清楚系统的容错行为(报错提示/回滚/重试/降级),不能写"系统正常处理异常"这种模糊表述;如果需求本身没有说明具体的容错行为,预期结果应写为"系统应给出明确的错误提示,不应崩溃或产生脏数据(具体提示文案需与产品确认)"。
+5. 涉及数据一致性、资金安全、账号安全的异常场景优先级为 P0;普通提示类异常为 P1;边缘小概率场景为 P2。
+6. 只输出合法 JSON 数组,不要有多余解释文字,不要使用 markdown 代码块包裹。
+{% endblock %}
+
+{% block schema %}
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["title", "precondition", "steps", "case_type", "priority", "covers"],
+    "properties": {
+      "title": {"type": "string"},
+      "precondition": {"type": "string"},
+      "steps": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["step", "expected"],
+          "properties": {
+            "step": {"type": "string"},
+            "expected": {"type": "string"}
+          }
+        }
+      },
+      "case_type": {"type": "string", "enum": ["exception"]},
+      "priority": {"type": "string", "enum": ["P0", "P1", "P2"]},
+      "covers": {"type": "array", "items": {"type": "string"}}
+    }
+  }
+}
+{% endblock %}
+
+{% block few_shot %}
+### 示例输入
+边界/异常场景:
+- 账号锁定期间尝试登录
+
+### 示例输出
+[
+  {
+    "title": "账号锁定期间输入正确验证码登录-登录仍被拒绝",
+    "precondition": "账号因连续输错验证码已被锁定,且锁定未到期",
+    "steps": [
+      {"step": "在锁定期内输入本次新获取的正确验证码,点击登录", "expected": "登录失败,提示账号已锁定及剩余解锁时间,不允许登录"}
+    ],
+    "case_type": "exception",
+    "priority": "P0",
+    "covers": ["账号锁定期间尝试登录"]
+  },
+  {
+    "title": "登录请求超时-页面给出明确提示且不重复提交",
+    "precondition": "模拟网络延迟或后端接口超时",
+    "steps": [
+      {"step": "输入正确手机号和验证码,点击登录后立即断网或模拟接口超时", "expected": "页面提示网络异常/请求超时,登录按钮恢复可点击状态,不会重复发起多次登录请求"}
+    ],
+    "case_type": "exception",
+    "priority": "P1",
+    "covers": ["补充场景:网络超时导致的登录请求异常"]
+  }
+]
+{% endblock %}
+
+{% block user %}
+### 需求标题
+{{ requirement_title }}
+
+### 需求描述
+{{ requirement_content }}
+
+### 边界/异常场景列表(重点覆盖对象)
+{% for ec in edge_cases %}
+- {{ ec }}
+{% endfor %}
+
+### 业务规则(上下文参考)
+{% for rule in business_rules %}
+- {{ rule }}
+{% endfor %}
+
+请基于以上场景生成异常/容错测试用例,按照 JSON Schema 输出。
+{% endblock %}
