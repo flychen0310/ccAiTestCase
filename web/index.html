@@ -36,6 +36,7 @@
               <span id="req-status" class="badge"></span>
             </div>
             <p id="req-content" class="req-content"></p>
+            <div id="req-images" class="req-images"></div>
             <div class="card-actions">
               <button id="btn-analyze" class="btn btn-primary">AI 需求理解</button>
               <span id="analyze-status" class="hint"></span>
@@ -43,7 +44,10 @@
           </section>
 
           <section id="analysis-section" class="card hidden">
-            <div class="card-header"><h3>需求理解结果</h3></div>
+            <div class="card-header">
+              <h3>需求理解结果</h3>
+              <button id="btn-edit-analysis" class="btn btn-outline btn-sm" title="AI 理解有偏差时,人工修正">编辑</button>
+            </div>
             <div class="analysis-grid">
               <div class="analysis-col">
                 <h4>功能点</h4>
@@ -90,6 +94,7 @@
                   <option value="rejected">已驳回</option>
                   <option value="edited">已编辑</option>
                 </select>
+                <button id="btn-add-case" class="btn btn-primary btn-sm" title="AI 没覆盖到的场景,手动补充用例">+ 新增用例</button>
                 <button id="btn-import-knowledge" class="btn btn-outline btn-sm" title="把本需求下已采纳的用例导入知识库,供以后生成时参考">
                   导入知识库
                 </button>
@@ -97,12 +102,16 @@
                 <button id="btn-export-csv" class="btn btn-outline btn-sm">导出 CSV</button>
               </div>
             </div>
+
+            <div id="case-stats" class="case-stats"></div>
+
             <table class="case-table">
               <thead>
                 <tr>
                   <th class="col-id">ID</th>
                   <th>标题</th>
                   <th class="col-type">类型</th>
+                  <th class="col-source">来源</th>
                   <th class="col-priority">优先级</th>
                   <th class="col-status">审核状态</th>
                   <th class="col-actions">操作</th>
@@ -124,10 +133,24 @@
         <button class="modal-close" data-close-modal="modal-new-requirement">&times;</button>
       </div>
       <div class="modal-body">
+        <label class="field-label">从飞书文档链接导入(可选)</label>
+        <div class="link-import-row">
+          <input id="input-req-link" class="input" type="text" placeholder="粘贴飞书文档链接,如 https://xxx.feishu.cn/docx/xxxxx" />
+          <button id="btn-fetch-link" class="btn btn-outline">抓取</button>
+        </div>
+        <p class="field-hint">抓取后会自动填入下方标题和描述,可编辑确认后再创建。</p>
         <label class="field-label">需求标题</label>
         <input id="input-req-title" class="input" type="text" placeholder="例如:购物车优惠券使用规则" />
         <label class="field-label">需求描述</label>
-        <textarea id="input-req-content" class="textarea" rows="8" placeholder="粘贴需求原文..."></textarea>
+        <textarea id="input-req-content" class="textarea" rows="8" placeholder="粘贴需求原文,或用上方链接自动导入..."></textarea>
+
+        <label class="field-label">需求配图(可选)</label>
+        <div class="image-upload-row">
+          <button id="btn-pick-images" class="btn btn-outline btn-sm" type="button">+ 选择图片</button>
+          <input id="input-req-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+        </div>
+        <p class="field-hint">界面原型图/流程图/接口截图等。使用支持视觉的模型(OpenAI/Claude)时,图片会参与 AI 需求理解;最多 6 张,单张 ≤ 8MB。</p>
+        <div id="image-preview" class="image-preview"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" data-close-modal="modal-new-requirement">取消</button>
@@ -136,11 +159,11 @@
     </div>
   </div>
 
-  <!-- 用例编辑弹窗 -->
+  <!-- 用例编辑/新增弹窗 -->
   <div id="modal-edit-case" class="modal-overlay hidden">
     <div class="modal modal-wide">
       <div class="modal-header">
-        <h3>编辑用例</h3>
+        <h3 id="edit-case-modal-title">编辑用例</h3>
         <button class="modal-close" data-close-modal="modal-edit-case">&times;</button>
       </div>
       <div class="modal-body">
@@ -155,6 +178,14 @@
         <button id="btn-add-step" class="btn btn-outline btn-sm">+ 添加步骤</button>
 
         <div class="field-row">
+          <div class="field-col">
+            <label class="field-label">类型</label>
+            <select id="edit-case-type" class="select select-full">
+              <option value="functional">正向功能</option>
+              <option value="boundary">边界值/等价类</option>
+              <option value="exception">异常/容错</option>
+            </select>
+          </div>
           <div class="field-col">
             <label class="field-label">优先级</label>
             <select id="edit-case-priority" class="select select-full">
@@ -182,6 +213,36 @@
         <div class="modal-footer-right">
           <button class="btn btn-outline" data-close-modal="modal-edit-case">取消</button>
           <button id="btn-save-case" class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 需求理解结果编辑弹窗 -->
+  <div id="modal-edit-analysis" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3>编辑需求理解结果</h3>
+        <button class="modal-close" data-close-modal="modal-edit-analysis">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="field-hint">每行一条。AI 理解有偏差时可在此增删改;保存后基于修正结果生成用例会更准。</p>
+        <label class="field-label">功能点</label>
+        <textarea id="edit-feature-points" class="textarea" rows="4"></textarea>
+
+        <label class="field-label">业务规则</label>
+        <textarea id="edit-business-rules" class="textarea" rows="4"></textarea>
+
+        <label class="field-label">边界/异常场景</label>
+        <textarea id="edit-edge-cases" class="textarea" rows="4"></textarea>
+
+        <label class="field-label">待澄清问题</label>
+        <textarea id="edit-open-questions" class="textarea" rows="3"></textarea>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-right">
+          <button class="btn btn-outline" data-close-modal="modal-edit-analysis">取消</button>
+          <button id="btn-save-analysis" class="btn btn-primary">保存</button>
         </div>
       </div>
     </div>

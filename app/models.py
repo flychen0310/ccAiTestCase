@@ -53,6 +53,29 @@ class Requirement(Base):
     )
     cases: Mapped[List["TestCase"]] = relationship(back_populates="requirement", cascade="all, delete-orphan")
     batches: Mapped[List["GenerationBatch"]] = relationship(back_populates="requirement", cascade="all, delete-orphan")
+    images: Mapped[List["RequirementImage"]] = relationship(
+        back_populates="requirement", cascade="all, delete-orphan", order_by="RequirementImage.id"
+    )
+
+
+class RequirementImage(Base):
+    """需求配图(界面原型/流程图/接口截图等)。
+
+    文件落盘在 config.UPLOAD_DIR 下,库里只存相对路径与元信息;
+    需求理解阶段会把图片读出来喂给支持视觉的模型。
+    """
+
+    __tablename__ = "requirement_image"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requirement_id: Mapped[int] = mapped_column(ForeignKey("requirement.id"))
+    filename: Mapped[str] = mapped_column(String(255))  # 用户上传时的原始文件名
+    stored_path: Mapped[str] = mapped_column(String(512))  # 相对 BASE_DIR 的存储路径
+    content_type: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    requirement: Mapped["Requirement"] = relationship(back_populates="images")
 
 
 class RequirementAnalysis(Base):

@@ -47,11 +47,18 @@ uvicorn app.main:app --reload --port 8000
 
 ```
 POST   /api/requirements                创建需求
+POST   /api/requirements/fetch-link     抓取飞书文档链接的标题+正文(不落库,供前端填充预览)
+POST   /api/requirements/{id}/images    上传需求配图(界面原型/流程图/截图,multipart)
+GET    /api/requirements/{id}/images    该需求的配图列表
+GET    /api/requirements/images/{id}/raw 读取图片原图
+DELETE /api/requirements/images/{id}    删除某张配图
 GET    /api/requirements                需求列表
 GET    /api/requirements/{id}           需求详情(含理解结果)
 POST   /api/requirements/{id}/analyze   触发 AI 需求理解
 POST   /api/requirements/{id}/generate  触发 AI 用例生成(body: {"case_types": ["functional","boundary","exception"]})
 GET    /api/requirements/{id}/cases     该需求下的用例列表(支持按类型/审核状态筛选)
+POST   /api/requirements/{id}/cases     人工手动补充用例(AI 没覆盖到的场景,来源标记为 manual)
+GET    /api/requirements/{id}/stats     用例统计:来源分布(召回率)+ 审核分布(采纳率)
 
 GET    /api/cases/{id}                  用例详情
 PATCH  /api/cases/{id}                  编辑用例内容 / 更新审核状态
@@ -100,11 +107,36 @@ curl -X POST localhost:8000/api/knowledge/import-accepted-cases -H "Content-Type
 - 检索会自动排除"当前需求自己"的样例,避免同需求内自我复读;跨需求场景才是它真正发挥价值的地方
 - 详细设计见 [docs/DESIGN.md](docs/DESIGN.md) 第 4.2 节
 
+## 需求配图(多模态需求理解)
+
+在"新建需求"弹窗里可选择上传若干配图(界面原型图、交互流程图、接口/字段截图等),随需求一起保存。
+
+- 触发时机:配图在 **AI 需求理解**(`/analyze`)阶段随需求文本一起交给模型;用例生成阶段复用需求理解产出的结构化结果,因此图片信息会自然传导到用例生成,不必二次上传图片。
+- 模型要求:仅 **支持视觉的模型**(`LLM_PROVIDER=openai` / `anthropic`,且用对应视觉模型如 `gpt-4o`、`claude-3-5-sonnet`)会真正"看图"。`deepseek`(官方 API 纯文本)与 `mock` 会自动跳过图片、仅用文本,流程不受影响。
+- 存储:图片落盘在 `data/uploads/{requirement_id}/` 下(已被 `.gitignore` 忽略),数据库只记录相对路径与元信息。
+- 限制:默认单个需求最多 6 张、单张 ≤ 8MB,支持 png/jpeg/webp/gif,可用环境变量覆盖(见 `.env.example`)。
+
+## 从飞书文档链接导入需求
+
+在"新建需求"弹窗里粘贴飞书文档链接(如 `https://xxx.feishu.cn/docx/xxxxx`)点"抓取",后端会直连飞书开放平台 API 拉取纯文本,自动填入标题和描述,确认后即可创建。
+
+启用前提:在飞书开放平台创建企业自建应用,拿到 `app_id`/`app_secret`,开通云文档读取权限,填入 `.env`:
+
+```
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=xxx
+```
+
+- 支持新版文档(`/docx/`)和 wiki 节点(`/wiki/`,底层需为 docx);旧版 `/docs/` 暂不支持。
+- 未配置凭证时,该功能会返回明确提示,不影响手动粘贴录入。
+- 抓取逻辑在 `app/services/doc_fetcher.py`,设计成可扩展结构,后续接入 TAPD、普通网页时新增对应 fetch 函数即可。
+
 ## 已知限制 / 后续规划
 
 - 需求理解/用例生成是同步阻塞调用(单条需求走完约 30~60 秒),MVP 阶段够用;并发量上来后需要改成异步任务队列(Celery/RQ)+ 轮询或 WebSocket 推进度。
 - RAG 知识库检索目前是 TF-IDF/openai embedding 二选一,量大后(万级以上文档)应迁移到 pgvector/Milvus 专用向量库。
-- 暂未接入外部需求源(TAPD)和执行平台(如 Lego),当前只支持手动录入需求。
+- 已支持从飞书文档链接导入需求;TAPD 需求/缺陷、普通网页的导入待接入(`doc_fetcher` 已预留扩展点)。
+- 暂未接入执行平台(如 Lego)回写。
 - 未加鉴权,仅适合内部工具场景使用。
 
 对应的 Prompt 效果验证环境见 [eval/README.md](eval/README.md)。

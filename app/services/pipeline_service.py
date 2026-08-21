@@ -7,7 +7,7 @@ from app import models
 from app.llm.client import LLMClient, extract_json
 from app.llm.output_schemas import GeneratedTestCase, RequirementAnalysis
 from app.llm.prompt_loader import load_prompt
-from app.services import knowledge_service
+from app.services import image_service, knowledge_service
 
 RAG_TOP_K = 3
 
@@ -21,18 +21,31 @@ PROMPT_VERSION = "v1"
 
 
 def analyze_requirement(db: Session, requirement: models.Requirement) -> models.RequirementAnalysis:
-    """调用 LLM 对需求做结构化拆解,写入/覆盖 requirement_analysis 记录。"""
+    """调用 LLM 对需求做结构化拆解,写入/覆盖 requirement_analysis 记录。
+
+    需求若附带配图,且当前模型支持视觉(openai/anthropic),会把图片一并交给模型理解;
+    生成用例阶段复用这里产出的结构化分析,因此图片信息会自然传导到用例生成。
+    """
     client = LLMClient()
+
+    # 仅在模型支持视觉时才读取图片,避免为不支持的模型做无谓的编码开销。
+    images = image_service.load_llm_images(requirement) if client.supports_vision() else []
+
     system, user = load_prompt(
         "requirement_analysis.jinja2",
-        {"requirement_title": requirement.title, "requirement_content": requirement.content},
+        {
+            "requirement_title": requirement.title,
+            "requirement_content": requirement.content,
+            "has_images": bool(images),
+            "image_count": len(images),
+        },
     )
 
     requirement.status = models.RequirementStatus.analyzing.value
     db.commit()
 
     try:
-        result = client.chat(system=system, user=user)
+        result = client.chat(system=system, user=user, images=images)
         parsed = RequirementAnalysis(**extract_json(result.content))
     except Exception as e:  # noqa: BLE001 - 需要兜住 LLM 调用/JSON解析/Schema校验的各类异常
         requirement.status = models.RequirementStatus.failed.value

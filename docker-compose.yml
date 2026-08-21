@@ -1,0 +1,38 @@
+# 本地/单机服务器一键部署。生产建议解开 db 服务用 PostgreSQL。
+services:
+  app:
+    build: .
+    image: ai-testcase:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # 持久化 SQLite 库文件与上传的配图,避免容器重建后数据丢失
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # 若启用下方 PostgreSQL,取消注释,并在 .env 里把 DATABASE_URL 指向 db
+    # depends_on:
+    #   - db
+
+  # ---- 可选:生产级数据库。启用后请在 .env 设置:
+  # DATABASE_URL=postgresql+psycopg2://app:change-me@db:5432/aitestcase
+  # 并在 requirements.txt 增加 psycopg2-binary,重新 build。
+  # db:
+  #   image: postgres:16
+  #   environment:
+  #     POSTGRES_USER: app
+  #     POSTGRES_PASSWORD: change-me
+  #     POSTGRES_DB: aitestcase
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+# volumes:
+#   pgdata:

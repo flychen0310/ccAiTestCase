@@ -10,15 +10,25 @@ MIN_SCORE = 0.05  # 低于这个相似度基本等于不相关,过滤掉避免�
 
 
 def add_document(
-    db: Session, doc_type: str, content: str, metadata: Optional[dict] = None
+    db: Session,
+    doc_type: str,
+    content: str,
+    metadata: Optional[dict] = None,
+    commit: bool = True,
 ) -> models.KnowledgeDoc:
+    """新增一条知识库文档。
+
+    commit=False 用于批量导入场景:调用方把多条 add 完后统一 commit 一次,
+    避免逐条提交带来的多次事务开销。
+    """
     doc = models.KnowledgeDoc(doc_type=doc_type, content=content, metadata_=metadata or {})
     if needs_precomputed_embedding():
         doc.embedding = compute_openai_embedding(content)
         doc.embedding_model = "text-embedding-3-small"
     db.add(doc)
-    db.commit()
-    db.refresh(doc)
+    if commit:
+        db.commit()
+        db.refresh(doc)
     return doc
 
 
@@ -92,7 +102,11 @@ def import_accepted_cases(db: Session, requirement_id: Optional[int] = None) -> 
                 "requirement_id": case.requirement_id,
                 "case_type": case.case_type,
             },
+            commit=False,
         )
         imported += 1
+
+    if imported:
+        db.commit()
 
     return {"imported": imported, "skipped_existing": skipped, "total_accepted": len(cases)}

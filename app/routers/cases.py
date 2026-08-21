@@ -33,7 +33,7 @@ def update_case(case_id: int, payload: api_schemas.TestCaseUpdate, db: Session =
         setattr(case, field, value)
 
     # 人工手动编辑了内容(而不仅是审核状态)时,自动标记为已编辑,便于统计有多少用例被改动过
-    content_fields = {"title", "precondition", "steps", "priority"}
+    content_fields = {"title", "precondition", "steps", "case_type", "priority"}
     if content_fields & updates.keys() and "review_status" not in updates:
         case.review_status = models.ReviewStatus.edited.value
 
